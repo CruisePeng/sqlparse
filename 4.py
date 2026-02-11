@@ -313,6 +313,10 @@ class SubQueryTool:
         # 新增：查询模式（默认精确查询）
         self.search_mode = tk.StringVar(value="exact")
 
+        # 筛选区域折叠控制
+        self.filter_expanded = False
+        self.filter_row_widgets = {}
+
         # 新增：当前选中单元格内容
         self.selected_cell_value = ""
 
@@ -563,6 +567,10 @@ class SubQueryTool:
         for widget in self.filter_frame.winfo_children():
             widget.destroy()
 
+        self.filter_row_widgets = {}
+        self.filter_expanded = False
+
+
         # 重置筛选条件
         self.filter_conditions = {col: "" for col in columns}
 
@@ -591,6 +599,10 @@ class SubQueryTool:
             filter_entry = ttk.Entry(self.filter_frame, width=15)
             filter_entry.grid(row=row_idx, column=col_idx, padx=2, pady=2, sticky="nsew")
             col_idx += 1
+
+            # 记录每行控件
+            self.filter_row_widgets.setdefault(row_idx, []).extend([label, filter_entry])
+
             if col_idx >= cols_per_row * 2:
                 col_idx = 0
                 row_idx += 1
@@ -598,12 +610,28 @@ class SubQueryTool:
             # 绑定输入事件（实时筛选）
             # filter_entry.bind("<KeyRelease>", lambda e, c=col, entry=filter_entry: self.on_filter_input(c, entry))
 
-
-
-
-
             # 存储输入框引用
             self.filter_conditions[col] = filter_entry
+
+            # 如果超过2行，默认隐藏第2行以后
+
+        if len(self.filter_row_widgets) > 1:
+            for r in range(1, len(self.filter_row_widgets)):
+                for widget in self.filter_row_widgets[r]:
+                          widget.grid_remove()
+
+            # 添加展开按钮
+            self.toggle_filter_btn = ttk.Button(
+                  self.filter_frame,
+                  text = "展开",
+                  command = self.toggle_filter_area
+            )
+            self.toggle_filter_btn.grid(
+                  row = 999, column = 0, columnspan = 4, pady = 5, sticky = "w"
+            )
+
+
+
     def on_filter_input(self):
 
         if self.result_df is None or self.result_df.empty:
@@ -669,6 +697,28 @@ class SubQueryTool:
             values = [str(val) for val in row.values]
             self.result_tree.insert("", "end", values=values)
             # self.result_tree.insert("", tk.END, values=list(row))
+
+    # ==============================
+    # 筛选区域展开/收起
+    # ==============================
+
+    def toggle_filter_area(self):
+        if not self.filter_row_widgets:
+            return
+        if not self.filter_expanded:
+            # 展开
+            for r in range(0, len(self.filter_row_widgets)):
+                for widget in self.filter_row_widgets[r]:
+                    widget.grid()
+            self.toggle_filter_btn.config(text="收起")
+            self.filter_expanded = True
+        else:
+            # 收起
+            for r in range(1, len(self.filter_row_widgets)):
+                for widget in self.filter_row_widgets[r]:
+                    widget.grid_remove()
+            self.toggle_filter_btn.config(text="展开")
+            self.filter_expanded = False
 
     # 更新结果区域标题
     def update_result_title(self):
