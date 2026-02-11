@@ -66,7 +66,7 @@ class DBConnector:
             return False
 
     # 执行SQL（增加行数限制，避免卡顿）
-    def execute_sql(self, sql, limit_rows=1000):
+    def execute_sql(self, sql, limit_rows=1000, disable_limit=False):
         count_sql = None
         try:
             # 自动加行数限制，防止大数据量崩溃
@@ -475,21 +475,49 @@ class SubQueryTool:
         )
         self.result_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
-        # 滚动条 表格
-        self.result_tree = ttk.Treeview(self.result_frame)
-        scroll_y = ttk.Scrollbar(self.result_frame, orient="vertical", command=self.result_tree.yview)
-        scroll_x = ttk.Scrollbar(self.result_frame, orient="horizontal", command=self.result_tree.xview)
-        self.result_tree.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+        # # 滚动条 表格
+        # self.result_tree = ttk.Treeview(self.result_frame)
+        # scroll_y = ttk.Scrollbar(self.result_frame, orient="vertical", command=self.result_tree.yview)
+        # scroll_x = ttk.Scrollbar(self.result_frame, orient="horizontal", command=self.result_tree.xview)
+        # self.result_tree.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+
+        # 新增：专门容器承载 Treeview + Scrollbar
+        tree_container = ttk.Frame(self.result_frame)
+        tree_container.pack(fill="both", expand=True)
+
 
         # 新增：筛选器容器
         self.filter_frame = ttk.Frame(self.result_frame)
         self.filter_frame.pack(side="top", fill="x", padx=2, pady=2)
-        # 设置筛选框自动换行（适配多列）
-        self.filter_frame.grid_columnconfigure(tk.ALL, weight=1)
 
-        self.result_tree.pack(side="left", fill="both", expand=True)
-        scroll_y.pack(side="right", fill="y")
-        scroll_x.pack(side="bottom", fill="x")
+
+        # # 设置筛选框自动换行（适配多列）
+        # self.filter_frame.grid_columnconfigure(tk.ALL, weight=1)
+
+        # self.result_tree.pack(side="left", fill="both", expand=True)
+        # scroll_y.pack(side="right", fill="y")
+        # scroll_x.pack(side="bottom", fill="x")
+
+
+        # 创建 Treeview
+        self.result_tree = ttk.Treeview(tree_container, show="headings")
+        # 创建滚动条
+        scroll_y = ttk.Scrollbar(tree_container, orient="vertical", command=self.result_tree.yview)
+        scroll_x = ttk.Scrollbar(tree_container, orient="horizontal", command=self.result_tree.xview)
+
+        # 绑定滚动条
+        self.result_tree.configure(
+            yscrollcommand = scroll_y.set,
+            xscrollcommand = scroll_x.set
+        )
+
+        # 正确布局
+        self.result_tree.grid(row=0, column=0, sticky="nsew")
+        scroll_y.grid(row=0, column=1, sticky="ns")
+        scroll_x.grid(row=1, column=0, sticky="ew")
+
+        tree_container.grid_rowconfigure(0, weight=1)
+        tree_container.grid_columnconfigure(0, weight=1)
 
 
     # 展示结果（新增筛选器功能）
@@ -569,7 +597,7 @@ class SubQueryTool:
         else:
             full_sql = base_sql
         # 执行数据库端筛选
-        filtered_df = self.db_connector.execute_sql(full_sql)
+        filtered_df = self.db_connector.execute_sql(full_sql,disable_limit= True)
         if filtered_df is None or filtered_df.empty:
             messagebox.showinfo("提示", "无匹配筛选结果")
             self.show_filtered_result(pd.DataFrame())
@@ -681,7 +709,7 @@ class SubQueryTool:
         self.original_sql = cte_sql.strip()
 
         # 执行
-        self.result_df = self.db_connector.execute_sql(cte_sql, limit_rows=self.query_limit)
+        self.result_df = self.db_connector.execute_sql(cte_sql, limit_rows=self.query_limit, disable_limit= True)
 
         if self.result_df is None or self.result_df.empty:
             messagebox.showinfo("提示", f"子查询{cte_name}执行完成，无数据返回！")
@@ -728,6 +756,45 @@ class SubQueryTool:
             messagebox.showwarning("警告", "暂无结果可导出！")
             return
 
+        if not self.db_connector or not self.original_sql:
+            messagebox.showwarning("警告", "无有效查询SQL，无法导出！")
+            return
+
+        # 获取所有筛选条件
+        filter_vals = {}
+
+        for col, entry in self.filter_conditions.items():
+            val = entry.get().strip()
+            if val:
+                filter_vals[col] = val
+
+        # 构造完整SQL（不加LIMIT）
+        base_sql = f"SELECT * FROM ({self.original_sql}) as table_name WHERE 1=1"
+        where_conditions = []
+        for col, val in filter_vals.items():
+            where_conditions.append(f"`{col}` LIKE '%{val}%'")
+
+        if where_conditions:
+            conditions_str = " AND ".join(where_conditions)
+            full_sql = f"{base_sql} AND {conditions_str}"
+        else:
+            full_sql = base_sql
+        # 重新查询数据库（不限制行数）
+        try:
+            export_df = self.db_connector.execute_sql(full_sql, limit_rows=999999999, disable_limit=False)
+            if export_df is None or export_df.empty:
+                messagebox.showwarning("提示", "无数据可导出！")
+                return
+        except Exception as e:
+            messagebox.showerror("错误", f"导出查询失败：{str(e)}")
+            return
+
+
+
+
+
+
+
         file_path = filedialog.asksaveasfilename(
             defaultextension=".xlsx",
             filetypes=[("Excel文件", "*.xlsx"), ("CSV文件", "*.csv")]
@@ -737,9 +804,9 @@ class SubQueryTool:
 
         try:
             if file_path.endswith(".xlsx"):
-                self.result_df.to_excel(file_path, index=False, engine="openpyxl")
+                export_df.to_excel(file_path, index=False, engine="openpyxl")
             else:
-                self.result_df.to_csv(file_path, index=False, encoding="utf-8-sig")
+                export_df.to_csv(file_path, index=False, encoding="utf-8-sig")
             messagebox.showinfo("成功", f"结果已导出到：{file_path}")
         except Exception as e:
             messagebox.showerror("失败", f"导出失败：{str(e)}")
