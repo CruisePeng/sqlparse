@@ -310,6 +310,10 @@ class SubQueryTool:
         self.result_df = None
         self.total_count = None
 
+        # 新增：查询模式（默认精确查询）
+        self.search_mode = tk.StringVar(value="exact")
+
+
         self.original_sql = ""  # 新增：保存执行子查询的原始SQL（无LIMIT）
         self.query_limit = 1000  # 新增：保存查询行数限制
 
@@ -465,6 +469,25 @@ class SubQueryTool:
         self.clear_filter_btn = ttk.Button(frame, text="清空筛选条件", command=self.clear_filter_conditions)
         self.clear_filter_btn.pack(side="left", padx=5, pady=5)
 
+      # 新增：查询模式单选按钮
+        ttk.Label(frame, text="查询方式：").pack(side="left", padx=(20, 5))
+
+        self.exact_radio = ttk.Radiobutton(
+            frame,
+            text = "精确查询",
+            variable = self.search_mode,
+            value = "exact"
+        )
+        self.exact_radio.pack(side="left")
+
+        self.fuzzy_radio = ttk.Radiobutton(
+            frame,
+            text = "模糊查询",
+            variable = self.search_mode,
+            value = "fuzzy"
+        )
+        self.fuzzy_radio.pack(side="left", padx=(5, 0))
+
     # 结果展示区域
     def create_result_area(self):
 
@@ -585,7 +608,15 @@ class SubQueryTool:
         where_conditions = []
         for col, val in filter_vals.items():
             # 构造模糊查询条件（兼容字符串/数字，防止SQL注入，这里简单处理，生产环境需用参数化）
-            where_conditions.append(f"`{col}` LIKE '%{val}%'")
+            # where_conditions.append(f"`{col}` LIKE '%{val}%'")
+
+            # 根据查询模式构造SQL
+            if self.search_mode.get() == "fuzzy":
+                where_conditions.append(f"`{col}` LIKE '%{val}%'")
+            else:
+                 where_conditions.append(f"`{col}` = '{val}'")
+
+
         # 重构SQL：原始SQL + WHERE条件
         filter_sql = self.original_sql
         base_sql = f"SELECT * FROM ({filter_sql}) as table_name WHERE 1=1"
@@ -602,13 +633,6 @@ class SubQueryTool:
             messagebox.showinfo("提示", "无匹配筛选结果")
             self.show_filtered_result(pd.DataFrame())
             return
-
-        # 应用筛选
-        # filtered_df = self.result_df.copy()
-        #
-        # for col, val in filter_vals.items():
-        #     # 兼容字符串/数字/日期类型，模糊匹配
-        #     filtered_df = filtered_df[filtered_df[col].astype(str).str.contains(val, case=False, regex=True)]
 
         self.total_count = self.db_connector.get_total_count(full_sql)
 
@@ -772,7 +796,13 @@ class SubQueryTool:
         base_sql = f"SELECT * FROM ({self.original_sql}) as table_name WHERE 1=1"
         where_conditions = []
         for col, val in filter_vals.items():
-            where_conditions.append(f"`{col}` LIKE '%{val}%'")
+            # where_conditions.append(f"`{col}` LIKE '%{val}%'")
+            if self.search_mode.get() == "fuzzy":
+                where_conditions.append(f"`{col}` LIKE '%{val}%'")
+            else:
+                where_conditions.append(f"`{col}` = '{val}'")
+
+
 
         if where_conditions:
             conditions_str = " AND ".join(where_conditions)
