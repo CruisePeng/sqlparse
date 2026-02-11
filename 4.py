@@ -313,6 +313,8 @@ class SubQueryTool:
         # 新增：查询模式（默认精确查询）
         self.search_mode = tk.StringVar(value="exact")
 
+        # 新增：当前选中单元格内容
+        self.selected_cell_value = ""
 
         self.original_sql = ""  # 新增：保存执行子查询的原始SQL（无LIMIT）
         self.query_limit = 1000  # 新增：保存查询行数限制
@@ -514,14 +516,6 @@ class SubQueryTool:
         self.filter_frame.pack(side="top", fill="x", padx=2, pady=2)
 
 
-        # # 设置筛选框自动换行（适配多列）
-        # self.filter_frame.grid_columnconfigure(tk.ALL, weight=1)
-
-        # self.result_tree.pack(side="left", fill="both", expand=True)
-        # scroll_y.pack(side="right", fill="y")
-        # scroll_x.pack(side="bottom", fill="x")
-
-
         # 创建 Treeview
         self.result_tree = ttk.Treeview(tree_container, show="headings")
         # 创建滚动条
@@ -541,6 +535,17 @@ class SubQueryTool:
 
         tree_container.grid_rowconfigure(0, weight=1)
         tree_container.grid_columnconfigure(0, weight=1)
+
+        # 绑定单元格点击事件
+        self.result_tree.bind("<ButtonRelease-1>", self.on_tree_click)
+
+        # 绑定 Ctrl+C 复制
+        self.result_tree.bind("<Control-c>", self.copy_selected_cell)
+
+        # 添加右键菜单
+        self.tree_menu = tk.Menu(self.root, tearoff=0)
+        self.tree_menu.add_command(label="复制", command=self.copy_selected_cell)
+        self.result_tree.bind("<Button-3>", self.show_tree_menu)
 
 
     # 展示结果（新增筛选器功能）
@@ -840,6 +845,47 @@ class SubQueryTool:
             messagebox.showinfo("成功", f"结果已导出到：{file_path}")
         except Exception as e:
             messagebox.showerror("失败", f"导出失败：{str(e)}")
+
+  # ==============================
+  # 单元格复制功能
+  # ==============================
+    def on_tree_click(self, event):
+      """记录当前点击的单元格内容"""
+      region = self.result_tree.identify("region", event.x, event.y)
+      if region != "cell":
+          return
+
+      row_id = self.result_tree.identify_row(event.y)
+      col_id = self.result_tree.identify_column(event.x)
+
+      if not row_id or not col_id:
+          return
+
+      col_index = int(col_id.replace("#", "")) - 1
+
+      item = self.result_tree.item(row_id)
+      values = item.get("values", [])
+
+      if 0 <= col_index < len(values):
+          self.selected_cell_value = str(values[col_index])
+
+
+    def copy_selected_cell(self, event=None):
+      """复制当前选中单元格内容到剪贴板"""
+      if not self.selected_cell_value:
+          return
+
+      self.root.clipboard_clear()
+      self.root.clipboard_append(self.selected_cell_value)
+      self.root.update()  # 保证剪贴板更新
+
+
+    def show_tree_menu(self, event):
+      """右键菜单"""
+      try:
+          self.tree_menu.tk_popup(event.x_root, event.y_root)
+      finally:
+          self.tree_menu.grab_release()
 
 
 # ========== 程序入口 ==========
