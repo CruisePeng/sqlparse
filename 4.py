@@ -490,6 +490,14 @@ class SubQueryTool:
         )
         self.fuzzy_radio.pack(side="left", padx=(5, 0))
 
+        # 新增：执行条件查询按钮
+        self.execute_filter_btn = ttk.Button(
+            frame,
+            text = "执行条件查询",
+            command = self.on_filter_input
+        )
+        self.execute_filter_btn.pack(side="left", padx=(15, 0))
+
     # 结果展示区域
     def create_result_area(self):
 
@@ -588,11 +596,15 @@ class SubQueryTool:
                 row_idx += 1
 
             # 绑定输入事件（实时筛选）
-            filter_entry.bind("<KeyRelease>", lambda e, c=col, entry=filter_entry: self.on_filter_input(c, entry))
+            # filter_entry.bind("<KeyRelease>", lambda e, c=col, entry=filter_entry: self.on_filter_input(c, entry))
+
+
+
+
 
             # 存储输入框引用
             self.filter_conditions[col] = filter_entry
-    def on_filter_input(self, column, entry):
+    def on_filter_input(self):
 
         if self.result_df is None or self.result_df.empty:
             return
